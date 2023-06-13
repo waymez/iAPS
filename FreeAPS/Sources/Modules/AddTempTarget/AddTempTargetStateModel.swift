@@ -7,7 +7,6 @@ extension AddTempTarget {
         @Injected() var apsManager: APSManager!
 
         let coredataContext = CoreDataStack.shared.persistentContainer.viewContext
-        @Environment(\.managedObjectContext) var moc
 
         @Published var low: Decimal = 0
         // @Published var target: Decimal = 0
@@ -37,7 +36,7 @@ extension AddTempTarget {
             var lowTarget = low
 
             if viewPercantage {
-                lowTarget = computeTarget()
+                lowTarget = Decimal(round(Double(computeTarget())))
                 coredataContext.performAndWait {
                     let saveToCoreData = TempTargets(context: self.coredataContext)
                     saveToCoreData.id = UUID().uuidString
@@ -90,7 +89,6 @@ extension AddTempTarget {
                 let setHBT = TempTargetsSlider(context: self.coredataContext)
                 setHBT.enabled = false
                 setHBT.date = Date()
-
                 try? self.coredataContext.save()
             }
         }
@@ -102,10 +100,9 @@ extension AddTempTarget {
             var lowTarget = low
 
             if viewPercantage {
-                lowTarget = computeTarget()
+                lowTarget = Decimal(round(Double(computeTarget())))
                 saveSettings = true
             }
-
             var highTarget = lowTarget
 
             if units == .mmolL, !viewPercantage {
@@ -190,7 +187,7 @@ extension AddTempTarget {
                 ratio = maxValue
                 target = (c / ratio) - c + 100
             }
-            return target
+            return Decimal(Double(target))
         }
     }
 }
