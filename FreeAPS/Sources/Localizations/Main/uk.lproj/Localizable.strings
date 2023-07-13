@@ -143,7 +143,7 @@
 "Save" = "Зберегти";
 
 /*  */
-"Save as preset" = "Зберегти як шаблон";
+"Save as Preset" = "Зберегти як шаблон";
 
 /* Delete Meal Preset */
 "Delete Preset" = "Видалити шаблон";
@@ -260,7 +260,7 @@ Enact a temp Basal or a temp target */
 /* */
 "Manual Temp Basal" = "Ручна тимчасова базальна швидкість (ТБШ)";
 
-/* Allow uploads tp NS */
+/* Allow uploads to different services */
 "Allow uploads" = "Дозволити вивантаження";
 
 /* API secret in NS */
@@ -1165,9 +1165,6 @@ Enact a temp Basal or a temp target */
 "Normal " = "Нормальний ";
 
 /* */
-"Currently no Override active" = "Наразі жодне перевизначення не активне";
-
-/* */
 "Total Insulin Adjustment" = "Повне коригування інсуліну";
 
 /* */
@@ -1277,6 +1274,65 @@ Enact a temp Basal or a temp target */
 
 /* */
 "Save as Preset" = "Зберегти як шаблон";
+
+/* ----------------------- New Bolus Calculator ---------------------------*/
+/* Warning about bolus recommendation. Title */
+
+"Warning!" = "Увага!";
+
+/* Alert to confirm bolus amount to add */
+"\n\nTap 'Add' to continue with selected amount." = "\n\nНатисніть «Додати», щоб продовжити з вибраним значенням.";
+
+/* */
+"Eventual Glucose" = "Можлива глюкоза";
+
+/* */
+"Target Glucose" = "Цільова глюкоза";
+
+/* */
+"Percentage setting" = "Відсоткове налаштування";
+
+/* */
+"Insulin Sensitivity" = "Чутливість до інсуліну";
+
+/* Formula displayed in Bolus info pop-up. Make translation short! */
+"(Eventual Glucose - Target) / ISF" = "(Можливий рівень глюкози – ціль) / ISF";
+
+/* */
+"Formula:" = "Формула:";
+
+/* Bolus pop-up footer */
+"Carbs and previous insulin are included in the glucose prediction, but if the Eventual Glucose is lower than the Target Glucose, a bolus will not be recommended." = "Вуглеводи та попередній інсулін включені в прогноз рівня глюкози, але якщо кінцевий рівень глюкози нижчий за цільовий рівень глюкози, болюс не буде рекомендовано.";
+
+/* Hide pop-up */
+"Hide" = "Приховати";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+"Eventual Glucose > Target Glucose, but glucose is predicted to drop down to " = "Кінцева глюкоза вища за цільову, але прогнозується, що рівень глюкози спочатку впаде до";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+"which is below your Threshold (" = "це нижче порога припинення (";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+"Eventual Glucose > Target Glucose, but glucose is climbing slower than expected. Expected: " = "Можливий рівень глюкози > цільовий рівень глюкози, але рівень глюкози зростає повільніше, ніж очікувалося. Очікується:";
+
+//* Bolus pop-up / Alert string. Make translations concise! */
+". Climbing: " = ". Підняття:";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+"Eventual Glucose > Target Glucose, but glucose is falling faster than expected. Expected: " = "Можливий рівень глюкози > цільовий рівень глюкози, але рівень глюкози падає швидше, ніж очікувалося. Очікується:";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+". Falling: " = ". Падіння:";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+"Eventual Glucose > Target Glucose, but glucose is changing faster than expected. Expected: " = "Можлива глюкоза > цільова глюкоза, але рівень глюкози змінюється швидше, ніж очікувалося. Очікується:";
+
+/* Bolus pop-up / Alert string. Make translations concise! */
+". Changing: " = ". Зміна: ";
+
+/* Add insulin without bolusing alert */
+" without bolusing" = " без введення болюса помпою";
 
 /* -------------------------------------------------------------------------------------------
   DASH strings
@@ -1475,7 +1531,7 @@ Enact a temp Basal or a temp target */
 "Median" = "Медіана";
 
 /* CGM readings in statView */
-"Readings today" = "Читання сьогодні";
+"Readings" = "Читання";
 
 /* CGM readings in statView */
 "Readings / 24h" = "Читання / 24 год";
@@ -1560,7 +1616,7 @@ Enact a temp Basal or a temp target */
 
 /* --------------------------------------------------------  Dexcom G7 --------------------------------------*/
 
-"Configuration CGM" = "Конфігурація CGM";
+"CGM Configuration" = "Конфігурація CGM";
 
 "Heartbeat" = "Серцебиття";
 
