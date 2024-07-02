@@ -7,6 +7,7 @@ import OmniBLE
 import OmniKit
 import RileyLinkKit
 import SwiftDate
+import SwiftUI
 import Swinject
 
 protocol APSManager {
@@ -42,6 +43,9 @@ enum APSError: LocalizedError {
     case apsError(message: String)
     case deviceSyncError(message: String)
     case manualBasalTemp(message: String)
+    case activeBolusViewBolus
+    case activeBolusViewBasal
+    case activeBolusViewBasalandBolus
 
     var errorDescription: String? {
         switch self {
@@ -50,7 +54,7 @@ enum APSError: LocalizedError {
         case let .invalidPumpState(message):
             return "Error: Invalid Pump State: \(message)"
         case let .bolusInProgress(message):
-            return "Error: Pump is Busy. \(message)"
+            return "\(NSLocalizedString("Error: Pump is Busy.", comment: "Pump Error")) \(NSLocalizedString(message, comment: "Pump Error Message"))"
         case let .glucoseError(message):
             return "Error: Invalid glucose: \(message)"
         case let .apsError(message):
@@ -59,6 +63,12 @@ enum APSError: LocalizedError {
             return "Sync error: \(message)"
         case let .manualBasalTemp(message):
             return "Manual Basal Temp : \(message)"
+        case .activeBolusViewBolus:
+            return "Suggested SMB not enacted while in Bolus View"
+        case .activeBolusViewBasal:
+            return "Suggested Temp Basal (when > 0) not enacted while in Bolus View"
+        case .activeBolusViewBasalandBolus:
+            return "Suggested Temp Basal (when > 0) and SMB not enacted while in Bolus View"
         }
     }
 }
@@ -76,6 +86,7 @@ final class BaseAPSManager: APSManager, Injectable {
     @Injected() private var nightscout: NightscoutManager!
     @Injected() private var settingsManager: SettingsManager!
     @Injected() private var broadcaster: Broadcaster!
+    @Injected() private var keychain: Keychain!
     @Persisted(key: "lastAutotuneDate") private var lastAutotuneDate = Date()
     @Persisted(key: "lastStartLoopDate") private var lastStartLoopDate: Date = .distantPast
     @Persisted(key: "lastLoopDate") var lastLoopDate: Date = .distantPast {
@@ -126,7 +137,7 @@ final class BaseAPSManager: APSManager, Injectable {
 
     init(resolver: Resolver) {
         injectServices(resolver)
-        openAPS = OpenAPS(storage: storage, nightscout: nightscout)
+        openAPS = OpenAPS(storage: storage, nightscout: nightscout, pumpStorage: pumpHistoryStorage)
         subscribe()
         lastLoopDateSubject.send(lastLoopDate)
 
@@ -550,6 +561,13 @@ final class BaseAPSManager: APSManager, Injectable {
                 processError(error)
                 return
             }
+
+            guard !activeBolusView() else {
+                debug(.apsManager, "Not enacting while in Bolus View")
+                processError(APSError.activeBolusViewBolus)
+                return
+            }
+
             let roundedAmount = pump.roundToSupportedBolusVolume(units: Double(amount))
             pump.enactBolus(units: roundedAmount, activationType: .manualRecommendationAccepted) { error in
                 if let error = error {
@@ -612,6 +630,13 @@ final class BaseAPSManager: APSManager, Injectable {
                 processError(error)
                 return
             }
+
+            guard !activeBolusView() || (activeBolusView() && rate == 0) else {
+                debug(.apsManager, "Not enacting while in Bolus View")
+                processError(APSError.activeBolusViewBasal)
+                return
+            }
+
             // unable to do temp basal during manual temp basal 😁
             if isManualTempBasal {
                 processError(APSError.manualBasalTemp(message: "Loop not possible during the manual basal temp"))
@@ -751,6 +776,14 @@ final class BaseAPSManager: APSManager, Injectable {
                 return Just(()).setFailureType(to: Error.self)
                     .eraseToAnyPublisher()
             }
+
+            guard !self.activeBolusView() || (self.activeBolusView() && rate == 0) else {
+                if let units = suggested.units {
+                    return Fail(error: APSError.activeBolusViewBasalandBolus).eraseToAnyPublisher()
+                }
+                return Fail(error: APSError.activeBolusViewBasal).eraseToAnyPublisher()
+            }
+
             return pump.enactTempBasal(unitsPerHour: Double(rate), for: TimeInterval(duration * 60)).map { _ in
                 let temp = TempBasal(duration: duration, rate: rate, temp: .absolute, timestamp: Date())
                 self.storage.save(temp, as: OpenAPS.Monitor.tempBasal)
@@ -763,12 +796,18 @@ final class BaseAPSManager: APSManager, Injectable {
             if let error = self.verifyStatus() {
                 return Fail(error: error).eraseToAnyPublisher()
             }
+
             guard let units = suggested.units else {
                 // It is OK, no bolus required
                 debug(.apsManager, "No bolus required")
                 return Just(()).setFailureType(to: Error.self)
                     .eraseToAnyPublisher()
             }
+
+            guard !self.activeBolusView() else {
+                return Fail(error: APSError.activeBolusViewBolus).eraseToAnyPublisher()
+            }
+
             return pump.enactBolus(units: Double(units), automatic: true).map { _ in
                 self.bolusProgress.send(0)
                 self.bolusAmount.send(units)
@@ -964,17 +1003,15 @@ final class BaseAPSManager: APSManager, Injectable {
 
     // Add to statistics.JSON for upload to NS.
     private func statistics() {
-        let now = Date()
+        let stats = CoreDataStorage().fetchStats()
+        versionCheack()
+        let newVersion = UserDefaults.standard.bool(forKey: IAPSconfig.newVersion)
+        // Only save and upload twice per day
+        guard ((-1 * (stats.first?.lastrun ?? .distantPast).timeIntervalSinceNow.hours) > 10) || newVersion else {
+            return
+        }
+
         if settingsManager.settings.uploadStats {
-            let hour = Calendar.current.component(.hour, from: now)
-            guard hour > 20 else {
-                return
-            }
-
-            let stats = CoreDataStorage().fetchStats()
-            // Only save and upload once per day
-            guard (-1 * (stats.first?.lastrun ?? .distantPast).timeIntervalSinceNow.hours) > 22 else { return }
-
             let units = settingsManager.settings.units
             let preferences = settingsManager.preferences
 
@@ -1011,27 +1048,7 @@ final class BaseAPSManager: APSManager, Injectable {
             let build = Bundle.main.buildVersionNumber
 
             // Read branch information from branch.txt instead of infoDictionary
-            var branch = "Unknown"
-            if let branchFileURL = Bundle.main.url(forResource: "branch", withExtension: "txt"),
-               let branchFileContent = try? String(contentsOf: branchFileURL)
-            {
-                let lines = branchFileContent.components(separatedBy: .newlines)
-                for line in lines {
-                    let components = line.components(separatedBy: "=")
-                    if components.count == 2 {
-                        let key = components[0].trimmingCharacters(in: .whitespaces)
-                        let value = components[1].trimmingCharacters(in: .whitespaces)
-
-                        if key == "BRANCH" {
-                            branch = value
-                            break
-                        }
-                    }
-                }
-            } else {
-                branch = "Unknown"
-            }
-
+            let branch = branch()
             let copyrightNotice_ = Bundle.main.infoDictionary?["NSHumanReadableCopyright"] as? String ?? ""
             let pump_ = pumpManager?.localizedTitle ?? ""
             let cgm = settingsManager.settings.cgm
@@ -1225,17 +1242,68 @@ final class BaseAPSManager: APSManager, Injectable {
                     LoopCycles: loopstat,
                     Insulin: insulin,
                     Variance: variance
-                )
+                ),
+                id: getIdentifier(),
+                dob: settingsManager.settings.birthDate,
+                sex: settingsManager.settings.sexSetting
             )
             storage.save(dailystat, as: file)
             nightscout.uploadStatistics(dailystat: dailystat)
+        } else if settingsManager.settings.uploadVersion {
+            let json = BareMinimum(
+                id: getIdentifier(),
+                created_at: Date.now,
+                Build_Version: Bundle.main.releaseVersionNumber ?? "UnKnown", Branch: branch()
+            )
+            nightscout.uploadVersion(json: json)
+        }
+    }
 
-            coredataContext.performAndWait { [self] in
-                let saveStatsCoreData = StatsData(context: self.coredataContext)
-                saveStatsCoreData.lastrun = Date()
-                try? self.coredataContext.save()
+    private func getIdentifier() -> String {
+        var identfier = keychain.getValue(String.self, forKey: IAPSconfig.id) ?? ""
+        guard identfier.count > 1 else {
+            identfier = UUID().uuidString
+            keychain.setValue(identfier, forKey: IAPSconfig.id)
+            return identfier
+        }
+        return identfier
+    }
+
+    private func versionCheack() {
+        if Date.now.hour % 2 == 0 {
+            if let last = CoreDataStorage().fetchVNr(),
+               (last.date ?? .distantFuture) < Date.now.addingTimeInterval(-10.hours.timeInterval)
+            {
+                nightscout.fetchVersion()
             }
         }
+    }
+
+    private func activeBolusView() -> Bool {
+        let defaults = UserDefaults.standard
+        return defaults.bool(forKey: IAPSconfig.inBolusView)
+    }
+
+    private func branch() -> String {
+        var branch = "Unknown"
+        if let branchFileURL = Bundle.main.url(forResource: "branch", withExtension: "txt"),
+           let branchFileContent = try? String(contentsOf: branchFileURL)
+        {
+            let lines = branchFileContent.components(separatedBy: .newlines)
+            for line in lines {
+                let components = line.components(separatedBy: "=")
+                if components.count == 2 {
+                    let key = components[0].trimmingCharacters(in: .whitespaces)
+                    let value = components[1].trimmingCharacters(in: .whitespaces)
+
+                    if key == "BRANCH" {
+                        branch = value
+                        break
+                    }
+                }
+            }
+        }
+        return branch
     }
 
     private func loopStats(loopStatRecord: LoopStats) {
